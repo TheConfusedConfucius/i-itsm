@@ -22,13 +22,14 @@ public class IncidentService {
 	private final AssignmentService assignmentService;
 	private final IncidentEventPublisher publisher;
 	private final CategoryClassifier classifier;
+	private final SlaService slaService;
 
 	public IncidentService(IncidentRepository repo, UserRepository users, ItServiceRepository services,
 						   CategoryRepository categories, PriorityStrategy priorityStrategy,
-						   AssignmentService assignmentService, IncidentEventPublisher publisher, CategoryClassifier classifier) {
+						   AssignmentService assignmentService, IncidentEventPublisher publisher, CategoryClassifier classifier, SlaService slaService) {
 		this.repo = repo; this.users = users; this.services = services; this.categories = categories;
 		this.priorityStrategy = priorityStrategy; this.assignmentService = assignmentService;
-		this.publisher = publisher; this.classifier=classifier;
+		this.publisher = publisher; this.classifier=classifier; this.slaService=slaService;
 	}
 
 	@Transactional
@@ -63,7 +64,7 @@ public class IncidentService {
 							"Could not determine a category; classify manually with ?categoryId="));
 		}
 		IncidentStatus before = i.getStatus();
-		i.classify(cat);
+		i.classify(cat, slaService.policyFor(i));
 		publish(i, EventType.CLASSIFIED, before);
 		return i;
 	}
@@ -106,6 +107,7 @@ public class IncidentService {
 
 	private String describe(Incident i, EventType type) {
 		return switch (type) {
+			case SLA_WARNING, SLA_VIOLATED -> "SLA event";
 			case CREATED      -> "Incident created, priority " + i.getPriority() + " (" + i.getService().getName() + ")";
 			case CLASSIFIED   -> "Incident classified as " + i.getCategory().getName().toUpperCase();
 			case ASSIGNED     -> "Assigned to " + i.getAssignedTo().getName();

@@ -9,7 +9,8 @@ import java.util.*;
 class EmailNotificationObserver implements IncidentObserver {   // simulated email
     private static final Logger log = LoggerFactory.getLogger(EmailNotificationObserver.class);
     private static final Set<EventType> EMAILED =
-            EnumSet.of(EventType.CREATED, EventType.ASSIGNED, EventType.RESOLVED, EventType.CLOSED);
+            EnumSet.of(EventType.CREATED, EventType.ASSIGNED, EventType.RESOLVED, EventType.CLOSED,
+                    EventType.SLA_WARNING, EventType.SLA_VIOLATED);
 
     @Override public void onEvent(IncidentEvent e) {
         if (!EMAILED.contains(e.type())) return;

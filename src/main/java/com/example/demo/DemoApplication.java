@@ -44,6 +44,8 @@ class IncidentController {
 	@PostMapping
 	Incident create(@Valid @RequestBody CreateIncidentRequest req) { return service.create(req); }
 	@GetMapping List<Incident> all() { return service.findAll(); }
+	@GetMapping("/{id}")
+	Incident one(@PathVariable Long id) { return service.get(id); }
 
 	@PostMapping("/{id}/classify")
 	Incident classify(@PathVariable Long id, @RequestParam(required = false) Long categoryId) {
@@ -71,6 +73,10 @@ class GlobalExceptionHandler {
 	ResponseEntity<String> invalid(InvalidStateTransitionException e) {
 		return ResponseEntity.status(409).body(e.getMessage());
 	}
+	@ExceptionHandler(MissingSlaConfigurationException.class)
+	ResponseEntity<String> noSla(MissingSlaConfigurationException e) {
+		return ResponseEntity.status(500).body(e.getMessage());
+	}
 	@ExceptionHandler(IncidentNotFoundException.class)
     ResponseEntity<String> notFound(IncidentNotFoundException e) {
 		return ResponseEntity.status(404).body(e.getMessage());
@@ -95,9 +101,10 @@ class DataSeeder implements CommandLineRunner {
 	private final UserRepository users;
 	private final ItServiceRepository services;
 	private final CategoryRepository categories;
+	private final SlaPolicyRepository policies;
 
-	DataSeeder(UserRepository users, ItServiceRepository services, CategoryRepository categories) {
-		this.users = users; this.services = services; this.categories = categories;
+	DataSeeder(UserRepository users, ItServiceRepository services, CategoryRepository categories, SlaPolicyRepository policies) {
+		this.users = users; this.services = services; this.categories = categories; this.policies=policies;
 	}
 
 	@Override
@@ -107,7 +114,12 @@ class DataSeeder implements CommandLineRunner {
 		users.save(new Technician("Ravi", "ravi@corp.test", Set.of("Network", "Database"), 5, 5));
 		users.save(new Technician("Meera", "meera@corp.test", Set.of("Application", "Cloud"), 3, 4));
 		users.save(new Administrator("Admin", "admin@corp.test"));
-		services.save(new ItService("Payment", 5));
+		ItService payment = services.save(new ItService("Payment", 5));
+		policies.save(new SlaPolicy(Priority.P1, null, 5, 30));
+		policies.save(new SlaPolicy(Priority.P2, null, 15, 120));
+		policies.save(new SlaPolicy(Priority.P3, null, 60, 480));
+		policies.save(new SlaPolicy(Priority.P4, null, 240, 1440));
+		policies.save(new SlaPolicy(Priority.P2, payment, 10, 90));   // Payment gets a stricter P2 SLA
 		services.save(new ItService("Email", 2));
 		services.save(new ItService("Network", 4));
 		categories.save(new Category("Application"));

@@ -16,6 +16,8 @@ public class Incident {
 	@Enumerated(EnumType.STRING)
 	private IncidentStatus status;
 	private LocalDateTime createdAt;
+	@OneToOne(cascade = CascadeType.ALL)
+	private SlaTracking sla;
 
 	@ManyToOne(optional = false) private User reporter;
 	@ManyToOne(optional = false) private ItService service;
@@ -48,6 +50,8 @@ public class Incident {
 	public String getDescription() { return description; }
 	public IncidentStatus getStatus() { return status; }
 	public LocalDateTime getCreatedAt() { return createdAt; }
+	public SlaTracking getSla() { return sla; }
+	public String getSlaStatus() { return sla == null ? "NOT_STARTED" : sla.currentState(); }
 	public User getReporter() { return reporter; }
 	public ItService getService() { return service; }
 	public Category getCategory() { return category; }
@@ -60,9 +64,10 @@ public class Incident {
 		return IncidentStates.of(status);
 	}
 
-	public void classify(Category category) {
-		IncidentStatus next = state().classify();   // throws if not NEW
+	public void classify(Category category, SlaPolicy policy) {
+		IncidentStatus next = state().classify();
 		this.category = category;
+		this.sla = new SlaTracking(createdAt, policy.getResponseMinutes(), policy.getResolutionMinutes());
 		this.status = next;
 	}
 
@@ -75,9 +80,13 @@ public class Incident {
 
 	public void acknowledge() {
 		status = state().acknowledge();
+		if (sla != null) sla.recordResponse(LocalDateTime.now());
 	}
 	public void startWork() { status = state().startWork(); }
-	public void resolve()   { status = state().resolve(); }
+	public void resolve() {
+		status = state().resolve();
+		if (sla != null) sla.recordResolution(LocalDateTime.now());
+	}
 	public void verify()    { status = state().verify(); }
 	public void close()     { status = state().close(); }
 }
