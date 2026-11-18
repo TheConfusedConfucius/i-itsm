@@ -5,20 +5,30 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.function.Consumer;
+
 @Service
 public class IncidentService {
+	private static final String ACTOR = "SYSTEM";   // replaced by the logged-in user once login exists
+
 	private final IncidentRepository repo;
 	private final UserRepository users;
 	private final ItServiceRepository services;
 	private final CategoryRepository categories;
 	private final PriorityStrategy priorityStrategy;
 	private final AssignmentService assignmentService;
+	private final IncidentEventPublisher publisher;
+	private final CategoryClassifier classifier;
 
 	public IncidentService(IncidentRepository repo, UserRepository users, ItServiceRepository services,
-						   CategoryRepository categories, PriorityStrategy priorityStrategy, AssignmentService assignmentService) {
-		this.repo = repo; this.users = users; this.services = services;
-		this.categories = categories; this.priorityStrategy = priorityStrategy;
-		this.assignmentService=assignmentService;
+						   CategoryRepository categories, PriorityStrategy priorityStrategy,
+						   AssignmentService assignmentService, IncidentEventPublisher publisher, CategoryClassifier classifier) {
+		this.repo = repo; this.users = users; this.services = services; this.categories = categories;
+		this.priorityStrategy = priorityStrategy; this.assignmentService = assignmentService;
+		this.publisher = publisher; this.classifier=classifier;
 	}
 
 	@Transactional
@@ -27,35 +37,83 @@ public class IncidentService {
 				.orElseThrow(() -> new ResourceNotFoundException("User", req.reporterId()));
 		ItService svc = services.findById(req.serviceId())
 				.orElseThrow(() -> new ResourceNotFoundException("Service", req.serviceId()));
-		Category cat = categories.findById(req.categoryId())
-				.orElseThrow(() -> new ResourceNotFoundException("Category", req.categoryId()));
+		Category cat = (req.categoryId() != null)
+				? categories.findById(req.categoryId())
+				.orElseThrow(() -> new ResourceNotFoundException("Category", req.categoryId()))
+				: null;
 
 		PriorityResult pr = priorityStrategy.calculate(req.impact(), req.urgency(), svc.getBusinessCriticality());
-		return repo.save(new Incident(req.description(), reporter, svc, cat, req.impact(), req.urgency(), pr));
+		Incident saved = repo.save(new Incident(req.description(), reporter, svc, cat,
+				req.impact(), req.urgency(), pr));
+		publish(saved, EventType.CREATED, null);
+		return saved;
 	}
+	@Transactional
+	public Incident classify(Long id, Long categoryId) {
+		Incident i = get(id);
+		Category cat;
+		if (categoryId != null) {                       // manual override
+			cat = categories.findById(categoryId)
+					.orElseThrow(() -> new ResourceNotFoundException("Category", categoryId));
+		} else if (i.getCategory() != null) {           // reporter's choice, confirmed
+			cat = i.getCategory();
+		} else {                                        // automatic suggestion
+			cat = classifier.classify(i.getDescription(), categories.findAll())
+					.orElseThrow(() -> new IllegalArgumentException(
+							"Could not determine a category; classify manually with ?categoryId="));
+		}
+		IncidentStatus before = i.getStatus();
+		i.classify(cat);
+		publish(i, EventType.CLASSIFIED, before);
+		return i;
+	}
+
 	public List<Incident> findAll() { return repo.findAll(); }
 
 	public Incident get(Long id) {
 		return repo.findById(id).orElseThrow(() -> new IncidentNotFoundException(id));
 	}
 
-	@Transactional public Incident classify(Long id)    { Incident i = get(id); i.classify(); return i; }
-	@Transactional
-	public Incident assign(Long id) {
+	public Technician recommend(Long id) {
 		Incident i = get(id);
-		i.assign(assignmentService.pick(i));
+		if (i.getCategory() == null)
+			throw new IllegalArgumentException("Incident must be classified first");
+		return assignmentService.pick(i);
+	}
+
+
+	@Transactional public Incident assign(Long id) {
+		return transition(id, EventType.ASSIGNED, i -> i.assign(assignmentService::pick));
+	}
+	@Transactional public Incident acknowledge(Long id) { return transition(id, EventType.ACKNOWLEDGED, Incident::acknowledge); }
+	@Transactional public Incident startWork(Long id)   { return transition(id, EventType.STARTED, Incident::startWork); }
+	@Transactional public Incident resolve(Long id)     { return transition(id, EventType.RESOLVED, Incident::resolve); }
+	@Transactional public Incident verify(Long id)      { return transition(id, EventType.VERIFIED, Incident::verify); }
+	@Transactional public Incident close(Long id)       { return transition(id, EventType.CLOSED, Incident::close); }
+
+	private Incident transition(Long id, EventType type, Consumer<Incident> action) {
+		Incident i = get(id);
+		IncidentStatus before = i.getStatus();
+		action.accept(i);                 // throws InvalidStateTransitionException if not allowed
+		publish(i, type, before);
 		return i;
 	}
-	public Technician recommend(Long id) {
-		return assignmentService.pick(get(id));
+
+	private void publish(Incident i, EventType type, IncidentStatus before) {
+		publisher.publish(new IncidentEvent(i, type, before, i.getStatus(), ACTOR,
+				describe(i, type), LocalDateTime.now()));
 	}
-	@Transactional public Incident acknowledge(Long id) { Incident i = get(id); i.acknowledge(); return i; }
-	@Transactional public Incident startWork(Long id) { Incident i = get(id); i.startWork(); return i; }
-	@Transactional public Incident resolve(Long id)   { Incident i = get(id); i.resolve(); return i; }
-	@Transactional public Incident verify(Long id)    { Incident i = get(id); i.verify(); return i; }
-	@Transactional public Incident close(Long id)     { Incident i = get(id); i.close(); return i; }
+
+	private String describe(Incident i, EventType type) {
+		return switch (type) {
+			case CREATED      -> "Incident created, priority " + i.getPriority() + " (" + i.getService().getName() + ")";
+			case CLASSIFIED   -> "Incident classified as " + i.getCategory().getName().toUpperCase();
+			case ASSIGNED     -> "Assigned to " + i.getAssignedTo().getName();
+			case ACKNOWLEDGED -> "Technician acknowledged incident";
+			case STARTED      -> "Investigation started";
+			case RESOLVED     -> "Incident marked RESOLVED";
+			case VERIFIED     -> "Resolution verified";
+			case CLOSED       -> "Incident CLOSED";
+		};
+	}
 }
-
-
-
-

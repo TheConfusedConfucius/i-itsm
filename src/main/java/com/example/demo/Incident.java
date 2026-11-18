@@ -19,7 +19,7 @@ public class Incident {
 
 	@ManyToOne(optional = false) private User reporter;
 	@ManyToOne(optional = false) private ItService service;
-	@ManyToOne(optional = false) private Category category;
+	@ManyToOne private Category category;    // null until classified
 	@ManyToOne private Technician assignedTo;
 
 	private int impact;
@@ -60,14 +60,17 @@ public class Incident {
 		return IncidentStates.of(status);
 	}
 
-	public void classify() {
-		status = state().classify();
+	public void classify(Category category) {
+		IncidentStatus next = state().classify();   // throws if not NEW
+		this.category = category;
+		this.status = next;
 	}
 
-	public void assign(Technician technician) {
 
-		status = state().assign();      // throws first if the state is wrong
-		this.assignedTo = technician;
+	public void assign(java.util.function.Function<Incident, Technician> picker) {
+		IncidentStatus next = state().assign();     // state check runs first, so a NEW incident gets a 409
+		this.assignedTo = picker.apply(this);
+		this.status = next;
 	}
 
 	public void acknowledge() {

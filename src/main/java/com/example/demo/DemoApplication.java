@@ -45,7 +45,10 @@ class IncidentController {
 	Incident create(@Valid @RequestBody CreateIncidentRequest req) { return service.create(req); }
 	@GetMapping List<Incident> all() { return service.findAll(); }
 
-	@PostMapping("/{id}/classify")    Incident classify(@PathVariable Long id)    { return service.classify(id); }
+	@PostMapping("/{id}/classify")
+	Incident classify(@PathVariable Long id, @RequestParam(required = false) Long categoryId) {
+		return service.classify(id, categoryId);
+	}
 	@PostMapping("/{id}/assign")      Incident assign(@PathVariable Long id)      { return service.assign(id); }
 	@PostMapping("/{id}/acknowledge") Incident acknowledge(@PathVariable Long id) { return service.acknowledge(id); }
     @PostMapping("/{id}/start")   Incident start(@PathVariable Long id)   { return service.startWork(id); }
