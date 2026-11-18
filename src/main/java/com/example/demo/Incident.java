@@ -20,6 +20,8 @@ public class Incident {
 	@ManyToOne(optional = false) private User reporter;
 	@ManyToOne(optional = false) private ItService service;
 	@ManyToOne(optional = false) private Category category;
+	@ManyToOne private Technician assignedTo;
+
 	private int impact;
 	private int urgency;
 	private int priorityScore;
@@ -53,6 +55,7 @@ public class Incident {
 	public int getUrgency() { return urgency; }
 	public Priority getPriority() { return priority; }
 	public int getPriorityScore() { return priorityScore; }
+	public Technician getAssignedTo() { return assignedTo; }
 	private IncidentState state() {
 		return IncidentStates.of(status);
 	}
@@ -61,9 +64,11 @@ public class Incident {
 		status = state().classify();
 	}
 
-	public void assign() {
-		status = state().assign();
-	}   // technician comes later
+	public void assign(Technician technician) {
+
+		status = state().assign();      // throws first if the state is wrong
+		this.assignedTo = technician;
+	}
 
 	public void acknowledge() {
 		status = state().acknowledge();

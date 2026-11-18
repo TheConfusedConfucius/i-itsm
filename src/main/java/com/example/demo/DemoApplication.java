@@ -5,7 +5,8 @@ import org.jspecify.annotations.NonNull;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import java.util.Set;
-
+import org.springframework.web.bind.annotation.*;
+import java.util.*;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.SpringApplication;
@@ -38,7 +39,8 @@ public class DemoApplication {
 class IncidentController {
 	private final IncidentService service;
 	IncidentController(IncidentService service) { this.service = service; }
-
+	@GetMapping("/{id}/recommended-technician")
+	Technician recommend(@PathVariable Long id) { return service.recommend(id); }
 	@PostMapping
 	Incident create(@Valid @RequestBody CreateIncidentRequest req) { return service.create(req); }
 	@GetMapping List<Incident> all() { return service.findAll(); }
@@ -74,6 +76,14 @@ class GlobalExceptionHandler {
 	ResponseEntity<String> missing(ResourceNotFoundException e) {
 		return ResponseEntity.status(404).body(e.getMessage());
 	}
+	@ExceptionHandler(TechnicianUnavailableException.class)
+	ResponseEntity<String> unavailable(TechnicianUnavailableException e) {
+		return ResponseEntity.status(409).body(e.getMessage());
+	}
+	@ExceptionHandler(IllegalArgumentException.class)
+	ResponseEntity<String> badInput(IllegalArgumentException e) {
+		return ResponseEntity.badRequest().body(e.getMessage());
+	}
 }
 
 
@@ -102,5 +112,25 @@ class DataSeeder implements CommandLineRunner {
 		categories.save(new Category("Database"));
 		System.out.println("Seeded: " + users.count() + " users, "
 				+ services.count() + " services, " + categories.count() + " categories");
+	}
+}
+@RestController
+@RequestMapping("/api")
+class AssignmentController {
+	private final AssignmentService assignment;
+	AssignmentController(AssignmentService assignment) { this.assignment = assignment; }
+
+	@GetMapping("/technicians/workload")
+	List<WorkloadView> workload() { return assignment.workloads(); }
+
+	@GetMapping("/admin/assignment-strategy")
+	Map<String, Object> current() {
+		return Map.of("active", assignment.currentStrategy(), "available", assignment.availableStrategies());
+	}
+
+	@PutMapping("/admin/assignment-strategy/{name}")
+	String change(@PathVariable String name) {
+		assignment.useStrategy(name);
+		return "Strategy is now " + name;
 	}
 }

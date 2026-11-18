@@ -3,7 +3,7 @@ package com.example.demo;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.util.*;
 
 @Service
 public class IncidentService {
@@ -12,11 +12,13 @@ public class IncidentService {
 	private final ItServiceRepository services;
 	private final CategoryRepository categories;
 	private final PriorityStrategy priorityStrategy;
+	private final AssignmentService assignmentService;
 
 	public IncidentService(IncidentRepository repo, UserRepository users, ItServiceRepository services,
-						   CategoryRepository categories, PriorityStrategy priorityStrategy) {
+						   CategoryRepository categories, PriorityStrategy priorityStrategy, AssignmentService assignmentService) {
 		this.repo = repo; this.users = users; this.services = services;
 		this.categories = categories; this.priorityStrategy = priorityStrategy;
+		this.assignmentService=assignmentService;
 	}
 
 	@Transactional
@@ -38,10 +40,22 @@ public class IncidentService {
 	}
 
 	@Transactional public Incident classify(Long id)    { Incident i = get(id); i.classify(); return i; }
-	@Transactional public Incident assign(Long id)      { Incident i = get(id); i.assign(); return i; }
+	@Transactional
+	public Incident assign(Long id) {
+		Incident i = get(id);
+		i.assign(assignmentService.pick(i));
+		return i;
+	}
+	public Technician recommend(Long id) {
+		return assignmentService.pick(get(id));
+	}
 	@Transactional public Incident acknowledge(Long id) { Incident i = get(id); i.acknowledge(); return i; }
 	@Transactional public Incident startWork(Long id) { Incident i = get(id); i.startWork(); return i; }
 	@Transactional public Incident resolve(Long id)   { Incident i = get(id); i.resolve(); return i; }
 	@Transactional public Incident verify(Long id)    { Incident i = get(id); i.verify(); return i; }
 	@Transactional public Incident close(Long id)     { Incident i = get(id); i.close(); return i; }
 }
+
+
+
+
