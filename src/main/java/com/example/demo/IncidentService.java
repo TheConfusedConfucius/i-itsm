@@ -8,9 +8,29 @@ import java.util.List;
 @Service
 public class IncidentService {
 	private final IncidentRepository repo;
-	public IncidentService(IncidentRepository repo) { this.repo = repo; }
+	private final UserRepository users;
+	private final ItServiceRepository services;
+	private final CategoryRepository categories;
+	private final PriorityStrategy priorityStrategy;
 
-	public Incident create(String description) { return repo.save(new Incident(description)); }
+	public IncidentService(IncidentRepository repo, UserRepository users, ItServiceRepository services,
+						   CategoryRepository categories, PriorityStrategy priorityStrategy) {
+		this.repo = repo; this.users = users; this.services = services;
+		this.categories = categories; this.priorityStrategy = priorityStrategy;
+	}
+
+	@Transactional
+	public Incident create(CreateIncidentRequest req) {
+		User reporter = users.findById(req.reporterId())
+				.orElseThrow(() -> new ResourceNotFoundException("User", req.reporterId()));
+		ItService svc = services.findById(req.serviceId())
+				.orElseThrow(() -> new ResourceNotFoundException("Service", req.serviceId()));
+		Category cat = categories.findById(req.categoryId())
+				.orElseThrow(() -> new ResourceNotFoundException("Category", req.categoryId()));
+
+		PriorityResult pr = priorityStrategy.calculate(req.impact(), req.urgency(), svc.getBusinessCriticality());
+		return repo.save(new Incident(req.description(), reporter, svc, cat, req.impact(), req.urgency(), pr));
+	}
 	public List<Incident> findAll() { return repo.findAll(); }
 
 	public Incident get(Long id) {

@@ -1,4 +1,6 @@
 package com.example.demo;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.jspecify.annotations.NonNull;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -28,7 +30,7 @@ public class DemoApplication {
 
 
 
-record CreateIncidentRequest(@NotBlank String description) {}
+
 
 
 @RestController
@@ -37,7 +39,8 @@ class IncidentController {
 	private final IncidentService service;
 	IncidentController(IncidentService service) { this.service = service; }
 
-	@PostMapping Incident create(@Valid @RequestBody CreateIncidentRequest req) { return service.create(req.description()); }
+	@PostMapping
+	Incident create(@Valid @RequestBody CreateIncidentRequest req) { return service.create(req); }
 	@GetMapping List<Incident> all() { return service.findAll(); }
 
 	@PostMapping("/{id}/classify")    Incident classify(@PathVariable Long id)    { return service.classify(id); }
@@ -65,6 +68,10 @@ class GlobalExceptionHandler {
 	}
 	@ExceptionHandler(IncidentNotFoundException.class)
     ResponseEntity<String> notFound(IncidentNotFoundException e) {
+		return ResponseEntity.status(404).body(e.getMessage());
+	}
+	@ExceptionHandler(ResourceNotFoundException.class)
+	ResponseEntity<String> missing(ResourceNotFoundException e) {
 		return ResponseEntity.status(404).body(e.getMessage());
 	}
 }
